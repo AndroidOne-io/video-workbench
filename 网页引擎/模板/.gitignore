@@ -1,0 +1,5 @@
+.local/
+output/
+__pycache__/
+*.pyc
+_demo-clock.wav
