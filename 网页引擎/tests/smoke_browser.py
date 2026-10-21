@@ -20,10 +20,25 @@ with sync_playwright() as p:
     assert a!=b and a==again,'拖动前后同一时间点必须得到相同画面'
     page.locator('#speed').fill('1.10');page.locator('#speed').press('Enter')
     assert abs(page.evaluate("document.getElementById('mix').playbackRate")-1.1)<1e-6
-    page.locator('#jump').select_option('2')
+    page.locator('#jump').select_option('3')
     page.wait_for_function('window.player.t===3')
+    page.locator('#search').fill('镜头')
+    assert page.locator('.caption:visible').count()==1
+    page.locator('#search').fill('')
+    page.locator('#subtitles').click()
+    assert page.locator('#subtitles').get_attribute('aria-pressed')=='false'
+    assert frame(4.5)!=b
+    page.locator('#subtitles').click()
+    page.locator('#jump').select_option('3')
     page.locator('#play').click();page.wait_for_function('window.player.t>3.2')
     page.locator('#play').click()
+    page.reload();page.wait_for_function('window.READY===true')
+    assert abs(page.evaluate("document.getElementById('mix').playbackRate")-1.1)<1e-6
+    page.set_viewport_size({'width':390,'height':844})
+    page.reload();page.wait_for_function('window.READY===true')
+    assert page.locator('#transcript').is_hidden()
+    page.locator('#transcriptToggle').click()
+    assert page.locator('#transcript').is_visible()
     assert errors==[],errors
     print('PASS: 两镜画面、确定性回看、镜头跳转、1.10倍速、音频时钟播放；未导出视频')
     browser.close()

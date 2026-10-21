@@ -25,9 +25,10 @@ const E = (() => {
   const IMG = {};
   function loadImages(list, onProgress) {
     let done = 0;
-    return Promise.all(list.map(name => new Promise(res => {
+    return Promise.all(list.map(name => new Promise((res, reject) => {
       const im = new Image(); im.decoding = 'async';
-      im.onload = im.onerror = () => { done++; onProgress && onProgress(done, list.length); res(); };
+      im.onload = () => { done++; onProgress && onProgress(done, list.length); res(); };
+      im.onerror = () => reject(new Error('图片缺失：' + name));
       im.src = 'assets/' + name; IMG[name.replace(/\.(png|jpg)$/, '')] = im;
     })));
   }
@@ -51,7 +52,8 @@ const E = (() => {
     pool[key] = pool[key] || [];
     while (pool[key].length <= slot) {
       const el = document.createElement('video');
-      el.src = VSRC[key]; el.muted = true; el.playsInline = true; el.preload = 'auto'; el.crossOrigin = 'anonymous';
+      el.src = VSRC[key]; el.muted = true; el.playsInline = true; el.preload = 'auto';
+      if (location.protocol !== 'file:') el.crossOrigin = 'anonymous';
       pool[key].push({ el, want: 0, rate: 1, used: false });
     }
     return pool[key][slot];
@@ -75,6 +77,7 @@ const E = (() => {
     FRAME++;
     for (const key in pool) for (const s of pool[key]) {
       const el = s.el;
+      s.active = s.used;
       if (!s.used) { if (!el.paused) el.pause(); continue; }
       s.used = false;
       const rate = s.rate * previewRate;
@@ -94,7 +97,8 @@ const E = (() => {
     for (;;) {
       const ps = [];
       for (const key in pool) for (const s of pool[key]) {
-        if (s.el.error) continue;                    // 解不了的素材（比如浏览器不支持 H.264）不等
+        if (!s.active) continue;
+        if (s.el.error) throw new Error('视频无法解码：' + key);
         const el = s.el, d = el.duration, want = isFinite(d) ? Math.max(0, Math.min(s.want, d - 0.05)) : s.want;
         if (Math.abs(el.currentTime - want) > 0.02 && !el.seeking) el.currentTime = want;
         if (el.seeking || el.readyState < 2 || Math.abs(el.currentTime - want) > 0.02) ps.push(new Promise(r => {
@@ -102,7 +106,8 @@ const E = (() => {
           el.addEventListener('seeked', done); el.addEventListener('loadeddata', done); setTimeout(done, 1000);
         }));
       }
-      if (!ps.length || performance.now() - t0 > maxMs) {     // 跳转完成后，新画面要再等一两帧才真正能被 drawImage 取到
+      if (ps.length && performance.now() - t0 > maxMs) throw new Error('视频定位超时');
+      if (!ps.length) {     // 跳转完成后，新画面要再等一两帧才真正能被 drawImage 取到
         await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 0)))); return;
       }
       await Promise.all(ps);
@@ -115,9 +120,9 @@ const E = (() => {
       el.addEventListener('loadeddata', ok, { once: true }); el.addEventListener('error', bad, { once: true }); setTimeout(() => r(el.readyState >= 1 ? null : k), timeout);
     }))).then(a => a.filter(Boolean));
   }
-  function busy() { for (const k in pool) for (const s of pool[k]) if (s.el.seeking) return true; return false; }
+  function busy() { for (const k in pool) for (const s of pool[k]) if (s.active && (s.el.seeking || s.el.readyState < 2 && !s.el.error)) return true; return false; }
   function allVideos() { const r = []; for (const k in pool) for (const s of pool[k]) r.push(s.el); return r; }
-  const ready = el => el && (el.readyState >= 2 || el instanceof HTMLImageElement || el instanceof HTMLCanvasElement);
+  const ready = el => el && (el.readyState >= 2 || el instanceof HTMLImageElement && el.complete && el.naturalWidth > 0 || el instanceof HTMLCanvasElement);
   const sizeOf = el => el instanceof HTMLVideoElement ? [el.videoWidth || 1920, el.videoHeight || 1080] : [el.width, el.height];
 
   // ------------------------------------------------------------------ 基本绘制
@@ -155,7 +160,7 @@ const E = (() => {
   const zoomEnd = ctx => ctx.restore();
 
   // ------------------------------------------------------------------ 后期：甩镜 / 震动 / 故障（对当前整帧做）
-  function snapshot(ctx) { const c = tmp('snap'); const g = c.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, W, H); g.drawImage(ctx.canvas, 0, 0); return c; }
+  function snapshot(ctx) { const c = tmp('snap'); const g = c.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, W, H); g.drawImage(ctx.canvas, 0, 0, W, H); return c; }
   function whip(ctx, k, horiz = true) {
     if (k <= 0.01) return; const n = 5 + 120 * k; const c = snapshot(ctx); const m = 9;
     ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);

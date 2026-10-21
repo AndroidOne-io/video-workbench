@@ -1,5 +1,7 @@
 """数据构建只写 JSON/JS；示例用静音 WAV 提供时钟，不生成视频。"""
 import json
+import html
+import uuid
 import wave
 from pathlib import Path
 
@@ -8,6 +10,9 @@ ROOT = Path(__file__).resolve().parent
 
 def build():
     p = json.loads((ROOT / 'project.json').read_text())
+    if not p.get('id'):
+        p['id'] = str(uuid.uuid4())
+        (ROOT/'project.json').write_text(json.dumps(p,ensure_ascii=False,indent=2)+'\n')
     shots = p['shots']
     assert shots and len({s['i'] for s in shots}) == len(shots)
     assert shots[0]['start'] == 0
@@ -32,11 +37,17 @@ def build():
             f.writeframes(bytes(round(duration*16000)*2))
     elif not (ROOT / audio).is_file():
         raise FileNotFoundError(f'先准备混音文件：{audio}')
-    d = dict(W=1920,H=1080,FPS=fps,PRE=0,TOTAL=duration,DUR=duration,
+    d = dict(id=p['id'],title=p['title'],fonts=p.get('fonts',[]),W=1920,H=1080,FPS=fps,PRE=0,TOTAL=duration,DUR=duration,
              shots=shots,subs=subs,EV=p['events'],audio=audio)
     for filename, var, data in [('data.js','D',d),('sources.js','VSRC',p['sources']),
                                 ('assets.js','ASSETS',p['images'])]:
         (ROOT / filename).write_text(f'window.{var} = '+json.dumps(data,ensure_ascii=False)+';\n')
+    scripts=['data.js','engine.js','sources.js','assets.js','common.js']+p.get('sceneScripts',['scenes.js'])+['preview.js','player-ui.js','player.js']
+    for src in scripts:
+        path=(ROOT/src).resolve()
+        if not path.is_relative_to(ROOT) or not path.is_file() or path.suffix!='.js':
+            raise ValueError(f'场景脚本必须是项目内的 JS 文件：{src}')
+    (ROOT/'index.html').write_text('<!doctype html>\n<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>视频预览</title><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="fonts.css"></head><body>\n'+'\n'.join(f'<script src="{html.escape(src,quote=True)}"></script>' for src in scripts)+'\n</body></html>\n')
     print(f'已生成时间线 {duration:g}s；{len(shots)} 镜；{len(subs)} 条字幕')
 
 

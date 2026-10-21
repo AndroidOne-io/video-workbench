@@ -12,7 +12,7 @@ function full(ctx, key, ts, {rate = 1, crop = null} = {}) {
   E.cover(ctx, v, 0, 0, W, H, .5, .5,
     crop ? [crop[0]*w, crop[1]*h, crop[2]*w, crop[3]*h] : null);
 }
-function frame(ctx, outputTime) {
+function frame(ctx, outputTime, subtitles=true) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
   ctx.shadowColor = 'transparent';
@@ -20,5 +20,5 @@ function frame(ctx, outputTime) {
   const t = outputTime - PRE, shot = shotAt(t);
   if (shot && VIS[shot.i]) VIS[shot.i](ctx, t);
   const sub = D.subs.find(([a, , , b]) => a <= t && t < b);
-  if (sub) E.subtitle(ctx, sub[1]);
+  if (subtitles && sub) E.subtitle(ctx, sub[1]);
 }

@@ -3,6 +3,7 @@ import argparse
 import shutil
 import subprocess
 import sys
+from sync_runtime import install
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -16,8 +17,8 @@ def main():
     if dest.exists():
         ap.error('目标目录已存在，请选择新目录以免覆盖工程')
     shutil.copytree(HERE / '模板', dest)
-    for filename in ['engine.js', 'player.js', 'serve.py', 'export_mp4.py']:
-        shutil.copy2(HERE / filename, dest / filename)
+    shutil.copy2(HERE / 'serve.py', dest / 'serve.py')
+    install(dest)
     subprocess.run([sys.executable, str(dest/'build.py')],check=True)
     print(f'启动：python3 "{dest / "serve.py"}" --port 8771')
 
